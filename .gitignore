@@ -52,3 +52,18 @@ temp/
 
 # Kilocode
 .kilocode/
+
+# Project Specific Logs
+backend_logs.txt
+worker_logs.txt
+*.log
+
+# Database Backups
+*.sql
+nixflow_backup_*
+
+# Temporary Scripts
+fix-app*.js
+fix-app*.py
+add-sla-dashboard.py
+apply_sla_migration.*
