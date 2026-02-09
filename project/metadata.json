@@ -1,0 +1,5 @@
+{
+  "name": "Powered Ticketing System",
+  "description": "A web-based ticketing system with workflow automation, role-based approvals, and an analytics dashboard, built with React and Tailwind CSS.",
+  "requestFramePermissions": []
+}

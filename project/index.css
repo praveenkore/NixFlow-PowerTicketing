@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+/* 
+ * Tailwind v4 @source directives for content scanning
+ * These directives specify which files Tailwind should scan for class usage.
+ * The @source at-rule is a valid Tailwind v4 feature and is required for
+ * CSS-first configuration. CSS linters may flag this as unknown, but it's
+ * intentional and necessary for Tailwind v4 to work correctly.
+ */
+@source "./index.html";
+@source "./**/*.{js,ts,jsx,tsx}";
+
+/* Custom styles */
+[contenteditable="true"]:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af; /* gray-400 */
+  pointer-events: none;
+  display: block; /* For the cursor to start on a new line */
+}

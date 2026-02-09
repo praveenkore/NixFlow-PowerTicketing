@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "commonjs",
+    "moduleResolution": "Node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    // Relax the implicit any rule so handler parameters without explicit
+    // type annotations do not cause compile errors. This retains other
+    // strictness checks while allowing express route handlers to be typed
+    // implicitly. Alternatively, you could explicitly import and use
+    // Express types (Request, Response) on each handler.
+    "noImplicitAny": false
+  },
+  // Only include TypeScript files from the `src` directory for compilation.
+  // The Prisma seed script under `prisma/` is executed via ts-node and does not
+  // need to be part of the compiled output. Including it with a rootDir of
+  // `src` causes a TS6059 error (file not under rootDir). Exclude prisma to
+  // avoid that error.
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "prisma/**/*"
+  ]
+}

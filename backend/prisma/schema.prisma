@@ -1,0 +1,900 @@
+// Prisma schema for NixFlow backend.
+// Defines core entities: User, Ticket, Workflow, Stage, HistoryLog, Comment, and TicketWatcher.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+// Role enumeration reflecting different roles in the ticketing workflow.
+enum Role {
+  Engineer
+  Manager
+  Director
+  Admin
+  CIO
+  InfraHead
+  CISO
+  HardwareEngineer
+  CTOAppOwner
+  CTOInfraHead
+  CTO
+}
+
+// Category enumeration for ticket categories.
+enum Category {
+  GeneralInquiry
+  TechnicalSupport
+  BillingQuestion
+  BugReport
+  FeatureRequest
+  Hardware
+  ProductionChange
+}
+
+// Status enumeration for ticket lifecycle.
+enum Status {
+  Draft
+  InApproval
+  Approved
+  Rejected
+  InProgress
+  Completed
+  Closed
+}
+
+// Priority enumeration for ticket priority.
+enum Priority {
+  Low
+  Medium
+  High
+  Critical
+}
+
+// SLA Status enumeration for SLA compliance tracking.
+enum SLAStatus {
+  WithinSLA
+  Warning
+  Breached
+}
+
+// SLA Breach Type enumeration for different types of SLA breaches.
+enum SLABreachType {
+  ResponseTime
+  ResolutionTime
+  ApprovalTime
+}
+
+// Knowledge Category enumeration for knowledge base article categories.
+enum KBCategory {
+  Hardware
+  Software
+  Network
+  Security
+  Access
+  General
+  Troubleshooting
+  FAQ
+  Procedures
+  Policies
+}
+
+// Knowledge Article Status enumeration for article lifecycle.
+enum KnowledgeArticleStatus {
+  Draft
+  PendingReview
+  Published
+  Archived
+}
+
+model User {
+  id              Int            @id @default(autoincrement())
+  name            String
+  email           String         @unique
+  password        String
+  role            Role
+  ticketsRequested Ticket[]      @relation("TicketRequestor")
+  ticketsAssigned  Ticket[]      @relation("TicketAssignee")
+  comments        Comment[]
+  historyLogs     HistoryLog[]
+  watchers        TicketWatcher[]
+  createdSLAPolicies SLAPolicy[]
+  acknowledgedBreaches SLABreach[]
+  knowledgeArticles KnowledgeArticle[]
+  articleRatings  KnowledgeArticleRating[]
+  articleViews    KnowledgeArticleView[]
+  articleFeedback KnowledgeArticleFeedback[]
+  searchHistory   KnowledgeSearchHistory[]
+  
+  // Web Form Builder relations
+  createdForms    CustomForm[]   @relation("FormCreator")
+  defaultAssignedForms CustomForm[] @relation("FormDefaultAssignee")
+  formSubmissions FormSubmission[]
+  
+  // Email Integration relations
+  createdEmailAccounts EmailAccount[] @relation("EmailAccountCreator")
+  defaultEmailAssignee EmailAccount[]
+}
+
+model Ticket {
+  id                Int           @id @default(autoincrement())
+  ticketId          String        @unique
+  title             String
+  description       String
+  requestor         User          @relation("TicketRequestor", fields: [requestorId], references: [id])
+  requestorId       Int
+  assignee          User          @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  assigneeId        Int
+  status            Status
+  priority          Priority
+  category          Category
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  currentStageIndex Int           @default(0)
+  workflow          Workflow?     @relation(fields: [workflowId], references: [id])
+  workflowId        Int?
+  comments          Comment[]
+  historyLogs       HistoryLog[]
+  watchers          TicketWatcher[]
+  slaMetric         SLAMetric?
+  slaBreaches       SLABreach[]
+
+  // Optional due date by which the ticket should be completed.  If
+  // present, this field can be used by the front‑end to highlight
+  // overdue tickets.
+  dueDate           DateTime?
+
+  // List of IDs for tickets that this ticket depends on.  These
+  // dependencies must be resolved before work can proceed.  Stored
+  // as an array of integers rather than a relation for simplicity.
+  dependencies      Int[]
+
+  // List of IDs for tickets that are blocked by this ticket.  When
+  // this ticket is in progress, it can set a blocking relationship
+  // for downstream tickets.  Stored as an array of integers.
+  blocking          Int[]
+  
+  // Email Integration relations
+  emailMessages     EmailMessage[]
+  emailThreads      EmailThread[]
+}
+
+model Workflow {
+  id          Int        @id @default(autoincrement())
+  name        String
+  description String
+  stages      Stage[]
+  tickets     Ticket[]
+  slaPolicies SLAPolicy[]
+}
+
+model Stage {
+  id          Int     @id @default(autoincrement())
+  name        String
+  approverRole Role
+  order       Int
+  workflow    Workflow @relation(fields: [workflowId], references: [id])
+  workflowId  Int
+}
+
+model HistoryLog {
+  id       Int      @id @default(autoincrement())
+  timestamp DateTime @default(now())
+  action   String
+  details  String?
+  comment  String?
+  user     User     @relation(fields: [userId], references: [id])
+  userId   Int
+  ticket   Ticket   @relation(fields: [ticketId], references: [id])
+  ticketId Int
+}
+
+model Comment {
+  id       Int      @id @default(autoincrement())
+  text     String
+  timestamp DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id])
+  userId   Int
+  ticket   Ticket   @relation(fields: [ticketId], references: [id])
+  ticketId Int
+}
+
+model TicketWatcher {
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+  ticketId Int
+  user     User   @relation(fields: [userId], references: [id])
+  userId   Int
+  @@id([ticketId, userId])
+}
+
+// SLA Policy model defining SLA rules for different ticket categories and priorities.
+model SLAPolicy {
+  id                Int          @id @default(autoincrement())
+  name              String
+  description       String?
+  isActive          Boolean      @default(true)
+  responseTimeMins  Int          @default(60)        // Time in minutes for first response
+  resolutionTimeMins Int         @default(480)       // Time in minutes for resolution (8 hours)
+  approvalTimeMins  Int?         // Optional: Time in minutes for approval completion
+  warningThreshold  Float        @default(0.8)       // Percentage of SLA time before warning (0.8 = 80%)
+  category          Category?
+  priority          Priority?
+  workflowId        Int?
+  workflow          Workflow?    @relation(fields: [workflowId], references: [id])
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  createdBy         User         @relation(fields: [createdById], references: [id])
+  createdById       Int
+  slaMetrics        SLAMetric[]
+  slaBreaches       SLABreach[]
+
+  @@index([category, priority])
+  @@index([workflowId])
+  @@index([isActive])
+}
+
+// SLA Metric model tracking actual SLA performance for each ticket.
+model SLAMetric {
+  id                     Int         @id @default(autoincrement())
+  ticketId               Int         @unique
+  ticket                 Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  slaPolicyId            Int
+  slaPolicy              SLAPolicy   @relation(fields: [slaPolicyId], references: [id])
+  ticketCreatedAt        DateTime
+  firstResponseAt        DateTime?
+  resolvedAt             DateTime?
+  approvalCompletedAt    DateTime?
+  responseTimeMins       Int?
+  resolutionTimeMins     Int?
+  approvalTimeMins       Int?
+  targetResponseTimeMins Int
+  targetResolutionTimeMins Int
+  targetApprovalTimeMins Int?
+  status                 SLAStatus   @default(WithinSLA)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  slaBreaches            SLABreach[]
+
+  @@index([ticketId])
+  @@index([slaPolicyId])
+  @@index([status])
+  @@index([ticketCreatedAt])
+}
+
+// SLA Breach model recording SLA violations for audit and remediation.
+model SLABreach {
+  id                  Int         @id @default(autoincrement())
+  ticketId            Int
+  ticket              Ticket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  slaMetricId         Int
+  slaMetric           SLAMetric   @relation(fields: [slaMetricId], references: [id], onDelete: Cascade)
+  slaPolicyId         Int
+  slaPolicy           SLAPolicy   @relation(fields: [slaPolicyId], references: [id])
+  breachType          SLABreachType
+  breachedAt          DateTime    @default(now())
+  actualTimeMins      Int
+  targetTimeMins      Int
+  overageMins         Int
+  status              String      @default("Open")  // Open, Acknowledged, Resolved
+  stageIndex          Int?
+  acknowledgedAt      DateTime?
+  acknowledgedBy      User?       @relation(fields: [acknowledgedById], references: [id])
+  acknowledgedById    Int?
+  resolutionNotes     String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@index([ticketId])
+  @@index([slaMetricId])
+  @@index([slaPolicyId])
+  @@index([breachType])
+  @@index([status])
+  @@index([breachedAt])
+}
+
+// Knowledge Category model for organizing knowledge base articles.
+model KnowledgeCategory {
+  id          Int                  @id @default(autoincrement())
+  name        KBCategory
+  slug        String               @unique
+  description String?
+  parentId    Int?
+  parent      KnowledgeCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    KnowledgeCategory[] @relation("CategoryHierarchy")
+  articles    KnowledgeArticle[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([parentId])
+  @@index([slug])
+}
+
+// Knowledge Tag model for tagging knowledge base articles.
+model KnowledgeTag {
+  id          Int                  @id @default(autoincrement())
+  name        String               @unique
+  slug        String               @unique
+  color       String?              // Hex color code for UI display
+  articles    KnowledgeArticle[]   @relation("ArticleTags")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([slug])
+}
+
+// Knowledge Article model for knowledge base articles.
+model KnowledgeArticle {
+  id            Int                      @id @default(autoincrement())
+  title         String
+  slug          String                   @unique
+  content       String                   // Rich text content (HTML/Markdown)
+  summary       String?                  // Brief summary for search results
+  status        KnowledgeArticleStatus   @default(Draft)
+  categoryId    Int?
+  category      KnowledgeCategory?      @relation(fields: [categoryId], references: [id])
+  author        User                     @relation(fields: [authorId], references: [id])
+  authorId      Int
+  viewCount     Int                      @default(0)
+  rating        Float                    @default(0) // Average rating (1-5)
+  ratingCount   Int                      @default(0) // Number of ratings
+  publishedAt   DateTime?
+  archivedAt    DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  versions      KnowledgeArticleVersion[]
+  ratings       KnowledgeArticleRating[]
+  views         KnowledgeArticleView[]
+  feedback      KnowledgeArticleFeedback[]
+  attachments   KnowledgeArticleAttachment[]
+  tags          KnowledgeTag[]           @relation("ArticleTags")
+
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([status])
+  @@index([publishedAt])
+  @@index([slug])
+  @@index([createdAt])
+}
+
+// Knowledge Article Version model for tracking article changes.
+model KnowledgeArticleVersion {
+  id          Int               @id @default(autoincrement())
+  article     KnowledgeArticle  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId   Int
+  version     Int               // Version number
+  title       String
+  content     String
+  summary     String?
+  changes     String?           // Description of changes made
+  createdBy   Int               // User ID who created this version
+  createdAt   DateTime          @default(now())
+
+  @@index([articleId])
+  @@index([version])
+  @@unique([articleId, version])
+}
+
+// Knowledge Article Rating model for user ratings on articles.
+model KnowledgeArticleRating {
+  id        Int               @id @default(autoincrement())
+  article   KnowledgeArticle  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId Int
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  rating    Int               // Rating from 1 to 5
+  comment   String?
+  createdAt DateTime          @default(now())
+
+  @@unique([articleId, userId])
+  @@index([articleId])
+  @@index([userId])
+}
+
+// Knowledge Article View model for tracking article views.
+model KnowledgeArticleView {
+  id        Int               @id @default(autoincrement())
+  article   KnowledgeArticle  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId Int
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  viewedAt  DateTime          @default(now())
+
+  @@index([articleId])
+  @@index([userId])
+  @@index([viewedAt])
+}
+
+// Knowledge Article Feedback model for user feedback on articles.
+model KnowledgeArticleFeedback {
+  id        Int               @id @default(autoincrement())
+  article   KnowledgeArticle  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId Int
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  helpful   Boolean           // Whether the article was helpful
+  comment   String?
+  createdAt DateTime          @default(now())
+
+  @@index([articleId])
+  @@index([userId])
+}
+
+// Knowledge Article Attachment model for file attachments on articles.
+model KnowledgeArticleAttachment {
+  id        Int               @id @default(autoincrement())
+  article   KnowledgeArticle  @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId Int
+  fileName  String
+  fileUrl   String            // URL to the file
+  fileSize  Int               // File size in bytes
+  mimeType  String            // MIME type of the file
+  uploadedAt DateTime         @default(now())
+
+  @@index([articleId])
+}
+
+// Knowledge Search History model for tracking user searches.
+model KnowledgeSearchHistory {
+  id           Int    @id @default(autoincrement())
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int
+  query        String
+  resultsCount Int
+  searchedAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([searchedAt])
+}
+
+// Event Log model for tracking all events in the event-driven architecture.
+model EventLog {
+  id          Int      @id @default(autoincrement())
+  eventId     String   @unique  // Unique event ID
+  eventType   String            // Event type (e.g., ticket.created, automation.prioritization_applied)
+  eventData    String   @db.Text  // JSON string of event data
+  metadata    String?  @db.Text  // JSON string of event metadata
+  priority    String?   // Event priority (critical, high, normal, low)
+  timestamp   DateTime @default(now())  // When the event was created
+  status      String   @default("pending")  // Event processing status (pending, processing, completed, failed)
+  retryCount  Int      @default(0)  // Number of retry attempts
+  error       String?  // Error message if event failed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([eventType])
+  @@index([timestamp])
+  @@index([status])
+  @@index([eventId])
+}
+
+// ============================================
+// WEB FORM BUILDER MODELS
+// ============================================
+
+// Form Field Type enumeration for available field types
+enum FormFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  EMAIL
+  PHONE
+  DATE
+  DATETIME
+  SELECT
+  MULTISELECT
+  CHECKBOX
+  RADIO
+  FILE
+  URL
+  PASSWORD
+  RATING
+  SLIDER
+}
+
+// Form Status enumeration for form lifecycle
+enum FormStatus {
+  Draft
+  Published
+  Archived
+}
+
+// Form Submission Status enumeration
+enum FormSubmissionStatus {
+  Pending
+  Processing
+  Converted
+  Failed
+}
+
+// Custom Form model for dynamic web forms
+model CustomForm {
+  id                Int              @id @default(autoincrement())
+  name              String
+  description       String?
+  slug              String           @unique
+  status            FormStatus       @default(Draft)
+  
+  // Category association - which ticket category this form creates tickets for
+  category          Category
+  
+  // Default priority for tickets created from this form
+  defaultPriority   Priority         @default(Medium)
+  
+  // Default assignee (optional) - if null, uses round-robin assignment
+  defaultAssigneeId Int?
+  defaultAssignee   User?            @relation("FormDefaultAssignee", fields: [defaultAssigneeId], references: [id])
+  
+  // Form fields (ordered)
+  fields            FormField[]
+  
+  // Form submissions
+  submissions       FormSubmission[]
+  
+  // Styling and configuration
+  successMessage    String           @default("Thank you for your submission. We will get back to you soon.")
+  submitButtonText  String           @default("Submit")
+  enableCaptcha     Boolean          @default(false)
+  allowAnonymous    Boolean          @default(false)  // If true, no login required
+  
+  // Template settings
+  isTemplate        Boolean          @default(false)
+  templateCategory  String?          // e.g., "IT Support", "HR", "Facilities"
+  clonedFromId      Int?
+  
+  // Metadata
+  createdById       Int
+  createdBy         User             @relation("FormCreator", fields: [createdById], references: [id])
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  @@index([slug])
+  @@index([category])
+  @@index([status])
+  @@index([isTemplate])
+  @@index([createdById])
+}
+
+// Form Field model for individual form fields
+model FormField {
+  id                Int              @id @default(autoincrement())
+  
+  // Parent form
+  formId            Int
+  form              CustomForm       @relation(fields: [formId], references: [id], onDelete: Cascade)
+  
+  // Field properties
+  name              String           // Field identifier (e.g., "email", "description")
+  label             String           // Display label (e.g., "Email Address")
+  type              FormFieldType
+  
+  // Ordering within the form
+  order             Int              @default(0)
+  
+  // Field configuration (stored as JSON)
+  config            String?          @db.Text  // JSON: placeholder, min, max, step, rows, etc.
+  
+  // Options for select/multi-select/checkbox/radio (stored as JSON)
+  options           String?          @db.Text  // JSON array: [{"label": "Option 1", "value": "opt1"}]
+  
+  // Validation rules (stored as JSON)
+  validation        String?          @db.Text  // JSON: {required: true, minLength: 5, pattern: "..."}
+  
+  // Conditional logic (stored as JSON)
+  conditionalLogic  String?          @db.Text  // JSON: {showWhen: [{field: "category", operator: "equals", value: "bug"}]}
+  
+  // Help text and placeholders
+  helpText          String?
+  placeholder       String?
+  
+  // Field width (for layout)
+  width             String           @default("full")  // full, half, third, quarter
+  
+  // Default value
+  defaultValue      String?
+  
+  // Field mapping to ticket fields (optional)
+  mapsToTicketField String?          // e.g., "title", "description", "priority", "custom"
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  @@index([formId])
+  @@index([order])
+}
+
+// Form Submission model for storing submitted form data
+model FormSubmission {
+  id                Int                    @id @default(autoincrement())
+  
+  // Form reference
+  formId            Int
+  form              CustomForm             @relation(fields: [formId], references: [id])
+  
+  // Submission data (stored as JSON)
+  data              String                 @db.Text  // JSON object with field values
+  
+  // Files attached to submission
+  attachments       FormSubmissionAttachment[]
+  
+  // Status tracking
+  status            FormSubmissionStatus   @default(Pending)
+  
+  // Converted ticket reference (if successfully converted)
+  ticketId          Int?
+  
+  // Submitter information
+  submitterId       Int?                   // Null if anonymous submission
+  submitter         User?                  @relation(fields: [submitterId], references: [id])
+  
+  // For anonymous submissions
+  submitterName     String?                // Captured name for anonymous users
+  submitterEmail    String?                // Captured email for anonymous users
+  submitterPhone    String?
+  
+  // IP and user agent for security/audit
+  ipAddress         String?
+  userAgent         String?
+  
+  // Conversion tracking
+  convertedAt       DateTime?
+  convertedById     Int?
+  conversionError   String?
+  
+  // Metadata
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  
+  @@index([formId])
+  @@index([status])
+  @@index([submitterId])
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+// Form Submission Attachment model for file uploads
+model FormSubmissionAttachment {
+  id            Int              @id @default(autoincrement())
+  
+  submissionId  Int
+  submission    FormSubmission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  
+  fileName      String
+  fileUrl       String
+  fileSize      Int
+  mimeType      String
+  fieldName     String?          // Which form field this attachment belongs to
+  
+  uploadedAt    DateTime         @default(now())
+  
+  @@index([submissionId])
+}
+
+// Form Analytics model for tracking form usage
+model FormAnalytics {
+  id            Int              @id @default(autoincrement())
+  
+  formId        Int              @unique
+  
+  // View and submission stats
+  viewCount     Int              @default(0)
+  submissionCount Int            @default(0)
+  conversionCount Int            @default(0)  // Successfully converted to tickets
+  
+  // Abandonment tracking
+  startedCount  Int              @default(0)  // Users who started filling
+  abandonedCount Int             @default(0)  // Users who didn't submit
+  
+  // Time tracking
+  avgCompletionTimeSecs Int      @default(0)
+  
+  // Last activity
+  lastSubmittedAt DateTime?
+  
+  // Daily stats (stored as JSON for flexibility)
+  dailyStats    String?          @db.Text  // JSON: [{"date": "2024-01-15", "views": 10, "submissions": 5}]
+  
+  updatedAt     DateTime         @updatedAt
+  
+  @@index([formId])
+}
+
+// ============================================
+// EMAIL INTEGRATION MODELS
+// ============================================
+
+// Email Protocol enumeration
+enum EmailProtocol {
+  IMAP
+  POP3
+}
+
+// Email Security enumeration
+enum EmailSecurity {
+  SSL
+  TLS
+  STARTTLS
+  NONE
+}
+
+// Email Message Status enumeration
+enum EmailMessageStatus {
+  New
+  Processing
+  Processed
+  Failed
+  Ignored
+}
+
+// Email Account Configuration model for storing email server settings
+model EmailAccount {
+  id                Int              @id @default(autoincrement())
+  
+  // Account identification
+  name              String           // Display name (e.g., "Support Inbox")
+  emailAddress      String           @unique  // Email address (e.g., "support@nixflow.com")
+  
+  // Server configuration
+  protocol          EmailProtocol    @default(IMAP)
+  host              String           // IMAP/POP3 server host
+  port              Int              // Server port (993 for IMAP SSL, 995 for POP3 SSL)
+  security          EmailSecurity    @default(SSL)
+  
+  // Authentication
+  username          String           // Username for authentication
+  password          String           // Encrypted password (should be encrypted at application level)
+  
+  // Check settings
+  checkInterval     Int              @default(5)  // Check interval in minutes
+  lastCheckedAt     DateTime?        // Last time emails were checked
+  
+  // Ticket creation settings
+  defaultCategory   Category         @default(GeneralInquiry)
+  defaultPriority   Priority         @default(Medium)
+  defaultAssigneeId Int?
+  defaultAssignee   User?            @relation(fields: [defaultAssigneeId], references: [id])
+  
+  // Auto-reply settings
+  autoReplyEnabled  Boolean          @default(false)
+  autoReplySubject  String?
+  autoReplyBody     String?          @db.Text
+  
+  // Status
+  isActive          Boolean          @default(true)
+  isConnected       Boolean          @default(false)
+  lastError         String?
+  
+  // Metadata
+  createdById       Int
+  createdBy         User             @relation("EmailAccountCreator", fields: [createdById], references: [id])
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  
+  // Related messages
+  messages          EmailMessage[]
+  
+  @@index([emailAddress])
+  @@index([isActive])
+  @@index([createdById])
+}
+
+// Email Message model for storing received emails
+model EmailMessage {
+  id                Int              @id @default(autoincrement())
+  
+  // Account reference
+  accountId         Int
+  account           EmailAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Email identifiers
+  messageId         String           @unique  // Unique message ID from email headers
+  threadId          String?          // Thread/conversation ID for grouping related emails
+  inReplyTo         String?          // Message ID this email is replying to
+  references        String?          @db.Text  // JSON array of referenced message IDs
+  
+  // Sender information
+  fromAddress       String           // Sender email address
+  fromName          String?          // Sender display name
+  toAddresses       String           @db.Text  // JSON array of recipient addresses
+  ccAddresses       String?          @db.Text  // JSON array of CC addresses
+  
+  // Content
+  subject           String
+  bodyPlain         String?          @db.Text  // Plain text body
+  bodyHtml          String?          @db.Text  // HTML body
+  
+  // Dates
+  sentAt            DateTime         // When the email was sent
+  receivedAt        DateTime         @default(now())  // When we received it
+  
+  // Processing status
+  status            EmailMessageStatus @default(New)
+  
+  // Related ticket
+  ticketId          Int?
+  ticket            Ticket?          @relation(fields: [ticketId], references: [id])
+  
+  // Reply tracking
+  isReply           Boolean          @default(false)
+  isBounce          Boolean          @default(false)  // Whether this is a bounce message
+  isAutoReply       Boolean          @default(false)  // Whether this is an auto-reply/out-of-office
+  
+  // Processing details
+  processedAt       DateTime?
+  processingError   String?
+  
+  // Attachments
+  attachments       EmailAttachment[]
+  
+  // Metadata
+  headers           String?          @db.Text  // JSON object of email headers
+  rawSize           Int?             // Size of raw email in bytes
+  
+  @@index([accountId])
+  @@index([messageId])
+  @@index([threadId])
+  @@index([ticketId])
+  @@index([status])
+  @@index([receivedAt])
+  @@index([fromAddress])
+}
+
+// Email Attachment model for storing email attachments
+model EmailAttachment {
+  id                Int              @id @default(autoincrement())
+  
+  emailMessageId    Int
+  emailMessage      EmailMessage     @relation(fields: [emailMessageId], references: [id], onDelete: Cascade)
+  
+  fileName          String
+  contentType       String           // MIME type
+  size              Int              // File size in bytes
+  
+  // Storage
+  filePath          String           // Path to stored file
+  fileUrl           String           // Public URL (if served)
+  
+  // Content ID for inline attachments
+  contentId         String?          // CID for inline images
+  isInline          Boolean          @default(false)
+  
+  // Checksum for deduplication
+  checksum          String?          // SHA256 hash of file content
+  
+  createdAt         DateTime         @default(now())
+  
+  @@index([emailMessageId])
+}
+
+// Email Thread model for conversation tracking
+model EmailThread {
+  id                Int              @id @default(autoincrement())
+  
+  // Thread identification
+  threadId          String           @unique  // Unique thread ID
+  subject           String           // Original subject (normalized)
+  
+  // Participants
+  participants      String           @db.Text  // JSON array of participant email addresses
+  
+  // Related ticket
+  ticketId          Int?
+  ticket            Ticket?          @relation(fields: [ticketId], references: [id])
+  
+  // Statistics
+  messageCount      Int              @default(1)
+  firstMessageAt    DateTime
+  lastMessageAt     DateTime         @updatedAt
+  
+  // Status
+  isResolved        Boolean          @default(false)
+  resolvedAt        DateTime?
+  
+  @@index([threadId])
+  @@index([ticketId])
+  @@index([lastMessageAt])
+}
