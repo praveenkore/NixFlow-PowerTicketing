@@ -1,0 +1,23 @@
+# NixFlow Enterprise Edition - Commercial License
+
+Copyright (c) 2026 Nixsoft Technologies Private Limited. All rights reserved.
+
+## Proprietary and Confidential
+
+This software and its associated documentation (the "Software") are the proprietary property of Nixsoft Technologies Private Limited ("Nixsoft") and are protected by copyright, trademark, and other intellectual property laws.
+
+### License Grant
+Subject to the terms of a separate written Commercial Agreement between You and Nixsoft, Nixsoft grants You a non-exclusive, non-transferable, limited license to use the Software solely for internal business purposes.
+
+### Restrictions
+Unless explicitly authorized in writing by Nixsoft, You shall not:
+1. Decompile, reverse engineer, or attempt to derive the source code of the Enterprise Edition modules.
+2. Redistribute, sublicense, or lease the Software to any third party.
+3. Remove or alter any copyright notices or branding from the Software.
+4. Use the Software for any purpose that violates applicable laws or regulations.
+
+### Disclaimer
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+For commercial inquiries, please contact: licensing@nixsoft.io

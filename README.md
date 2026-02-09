@@ -28,12 +28,25 @@ NixFlow is an enterprise-grade, containerized ticketing system designed for stre
 ## 📂 Project Structure
 
 ```text
-├── backend/          # Express API server
-├── project/          # React frontend application
-├── worker/           # Background process for SLA/Tasks
+├── backend/          # Community API Core (Apache 2.0)
+├── project/          # Community UI Core (Apache 2.0)
+├── worker/           # Community Background Worker (Apache 2.0)
+├── ee/               # Enterprise Extensions (Proprietary) - Commercial Only
 ├── docker-compose.yml # Orchestration configuration
-└── .gitignore        # Optimized Git exclusion rules
+└── README.md         # Documentation & Guides
 ```
+
+## ⚖️ Licensing
+
+NixFlow PowerTicketing follows an **Open-Core** licensing model to support both independent users and enterprise organizations.
+
+- **Community Edition**: Licensed under the [Apache License 2.0](LICENSE). It is 100% free and open-source, suitable for small teams and self-evaluation.
+- **Enterprise Edition**: Licensed under a [Commercial License](LICENSE-ENTERPRISE.txt). It includes advanced features such as Single Sign-On (SSO), AI-driven SLA insights, and multi-tenancy.
+
+We believe in maintaining a strong, functional core for the community while providing specialized tools for large-scale enterprise needs.
+
+> [!TIP]
+> Interested in Enterprise features? [Contact our sales team](mailto:sales@nixsoft.io) for a demo and trial license.
 
 ## ⚙️ Quick Start
 
